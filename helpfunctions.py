@@ -1,5 +1,5 @@
 from mpi4py import MPI
-import numpy as n
+import numpy as np
 from dolfinx import mesh as dmesh, fem, io
 from dolfinx.fem.petsc import LinearProblem
 import ufl

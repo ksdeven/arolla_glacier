@@ -1,9 +1,9 @@
 {
     "id": "39457C7B",
-    "path": "~/jupyter/NA/project/~/jupyter/NA/project/project.qmd",
+    "path": "~/jupyter/NA/arolla_glacier/project.qmd",
     "project_path": "project.qmd",
     "type": "quarto_markdown",
-    "hash": "33472035",
+    "hash": "4235706054",
     "contents": "",
     "dirty": false,
     "created": 1768892405528.0,
@@ -17,15 +17,15 @@
         "rmdVisualCollapsedChunks": "",
         "rmdVisualModeLocation": "2006:1520.800048828125",
         "docOutlineVisible": "0",
-        "cursorPosition": "105,32",
-        "scrollLine": "99"
+        "cursorPosition": "128,116",
+        "scrollLine": "117"
     },
     "folds": "",
-    "lastKnownWriteTime": 1771248147,
+    "lastKnownWriteTime": 1771412594,
     "encoding": "UTF-8",
     "collab_server": "",
     "source_window": "",
-    "last_content_update": 1771248147172,
+    "last_content_update": 1771412594621,
     "read_only": false,
     "read_only_alternatives": []
 }
