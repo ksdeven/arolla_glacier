@@ -1,0 +1,4 @@
+[1,"==> quarto preview project.qmd --to pdf --no-watch-inputs --no-browse\n\n"]
+[1,"\nStarting python3 kernel..."]
+[1,"Traceback (most recent call last):\n  File \"/usr/lib/rstudio/resources/app/bin/quarto/share/jupyter/jupyter.py\", line 20, in <module>\n    from notebook import notebook_execute, RestartKernel\n  File \"/usr/lib/rstudio/resources/app/bin/quarto/share/jupyter/notebook.py\", line 15, in <module>\n    from yaml import safe_load as parse_string\nModuleNotFoundError: No module named 'yaml'\n"]
+[1,"\u001B[33mWARN: Error encountered when rendering files\u001B[39m\n"]

@@ -1,0 +1,23 @@
+"0","import os"
+"0","import ctypes"
+"0","rom mpi4py import MPI"
+"2","G3;  File ""<string>"", line 1
+    rom mpi4py import MPI
+        ^^^^^^
+SyntaxError: invalid syntax
+g"
+"0","from dolfinx import mesh"
+"0","import numpy"
+"0","from dolfinx import fem"
+"0","import ufl"
+"0","from dolfinx import default_scalar_type"
+"0","from dolfinx.fem.petsc import LinearProblem"
+"0","import pyvista"
+"0","from dolfinx import plot"
+"0",""
+"0",""
+"0","# 1. Manually load the Conda environment's C++ library globally"
+"0","lib_path = ""/home/dsingh/miniconda3/envs/fenicsx-low/lib/libstdc++.so.6"""
+"0","ctypes.CDLL(lib_path, mode=ctypes.RTLD_GLOBAL)"
+"0",""
+"0",""

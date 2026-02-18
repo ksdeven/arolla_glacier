@@ -1,0 +1,871 @@
+---
+title: "HandIn-3"
+author: "Devendra Singh"
+date: Jan 7, 2026 
+format: 
+  pdf:
+    documentclass: article
+    number-sections: false # if this is true you will get automatic numbering
+    fig-cap-location: top # where you want your figure captions
+    tbl-cap-location: top  # where you want your table captions
+    fig-numbering: true # When you use captions, this option will number them
+    tbl-numbering: true # Same for tables
+    toc: true # from now on you should always use table of contents to make sure that your structure is correct.
+    #lof: true
+    #lot: true
+    include-in-header: #These options are to setup captions
+      text: | 
+        \usepackage{caption}
+        \captionsetup{
+        labelfont=bf,
+        width=0.9\linewidth
+        }
+engine: knitr
+knitr:
+  opts_chunk: 
+    python.reticulate: true
+   
+execute:
+  python: "/home/dsingh/miniconda3/envs/fenicsx-low/bin/python"
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r setup_conda, include=FALSE}
+# 1. Identify the Conda library path
+conda_lib <- "/home/dsingh/miniconda3/envs/fenicsx-low/lib"
+# Force the dynamic linker to prioritize Conda libs
+Sys.setenv(LD_LIBRARY_PATH = paste0("/home/dsingh/miniconda3/envs/fenicsx-low/lib:", Sys.getenv("LD_LIBRARY_PATH")))
+# 2. PRELOAD the correct libjpeg before anything else loads
+# This tells Linux: "Use this specific file for any jpeg requests"
+Sys.setenv(LD_PRELOAD = file.path(conda_lib, "libjpeg.so.8"))
+
+library(reticulate)
+use_python("/home/dsingh/miniconda3/envs/fenicsx-low/bin/python", required = TRUE)
+py_config()
+```
+
+```{python}
+import matplotlib.pyplot as plt
+import numpy as np
+from math import pi
+from scipy.integrate import simpson
+```
+
+
+```{python}
+#Functions
+
+def f(x):
+    return (8*pi)**2*np.sin(8*pi*x)
+
+
+def Hatfunctions(xleft,xright,dx,x):
+    phileft=(xright-x)/dx
+    phiright=(x-xleft)/dx
+    return phileft,phiright
+
+
+def ComputeLocalMassMatrix(xleft,xright,pointsforintegration):
+    M=np.zeros((2,2))
+    phileft,phiright=Hatfunctions(xleft,xright,dx,pointsforintegration)
+    Mii=simpson(phileft*phileft, x=pointsforintegration)
+    Miplus1i=simpson(phiright*phileft, x=pointsforintegration)
+    Miiplus1=simpson(phileft*phiright, x=pointsforintegration)
+    Miplus1iplus1=simpson(phiright*phiright, x=pointsforintegration)
+    M[0,0]=Mii
+    M[0,1]=Miiplus1
+    M[1,0]=Miplus1i
+    M[1,1]=Miplus1iplus1
+    return M
+
+
+def SetDirichletConditions(GlobalM,Globalb):
+    GlobalM[0,:]=0
+    GlobalM[-1,:]=0
+    GlobalM[0,0]=1
+    GlobalM[-1,-1]=1
+    Globalb[0]=0
+    Globalb[-1]=0
+    return GlobalM,Globalb
+
+
+def ComputeRHS(xleft,xright,pointsforintegration,f):
+    b=np.zeros((2))
+    phileft,phiright=Hatfunctions(xleft,xright,dx,pointsforintegration)
+    bi=simpson(np.multiply(f(pointsforintegration),phileft), x=pointsforintegration)
+    biplus1=simpson(np.multiply(f(pointsforintegration),phiright), x=pointsforintegration)
+    b[0]=bi
+    b[1]=biplus1
+    return b
+
+def FillGlobalMatrixWithLocalMatrix(GlobalM,M,Globalb,b):
+    GlobalM[i,i]=GlobalM[i,i]+M[0,0]
+    GlobalM[i,iplus1]=GlobalM[i,iplus1]+M[0,1]
+    GlobalM[iplus1,i]=GlobalM[iplus1,i]+M[1,0]
+    GlobalM[iplus1,iplus1]=GlobalM[iplus1,iplus1]+M[1,1]
+  
+    Globalb[i]=Globalb[i]+b[0]
+    Globalb[iplus1]=Globalb[iplus1]+b[1]
+    return GlobalM,Globalb
+
+
+```
+
+
+\pagebreak
+
+
+# Exercise 8
+
+#### 1. How are integrals computed?
+
+Simpson method is used:
+
+###### For mass Matrix:
+
+```{python, echo=TRUE, eval=FALSE}
+Mii=simpson(phileft\*phileft, x=pointsforintegration)
+Miplus1i=simpson(phiright\*phileft, x=pointsforintegration)
+Miiplus1=simpson(phileft\*phiright, x=pointsforintegration)
+Miplus1iplus1=simpson(phiright\*phiright, x=pointsforintegration)
+```
+
+
+###### For RHS :
+```{python, echo=TRUE, eval=FALSE}
+bi=simpson(np.multiply(f(pointsforintegration),phileft),x=pointsforintegration)
+biplus1=simpson(np.multiply(f(pointsforintegration),phiright),
+                x=pointsforintegration)
+```
+
+
+
+where point of integration is taken for each element having 2 nodes, (i, i+1) as xleft and xright into 10 intervals:
+
+```{python, echo=TRUE, eval=FALSE}
+pointsforintegration= np.linspace(xleft,xright,10)
+```
+
+
+#### 2. for N=10, Nodal interpolant and $L^2$ Interpolant
+
+```{python}
+#| label: fig-interpolant
+#| fig-cap: "for N=10, Nodal interpolant and L2 Interpolant comparison with analytical solution"
+N=10 # nof elements
+
+x=np.linspace(0,1,N+1)
+dx=1/N
+
+elements=[]
+for e in range(0,N):
+    points=x
+    elements.append((e,e+1))
+
+
+GlobalMatrix=np.zeros((N+1,N+1))
+Globalb=np.zeros((N+1))
+
+for e in range(0,N):  #loop over element
+    (i,iplus1)=elements[e]
+    xleft=points[i]
+    xright=points[i+1]
+    pointsforintegration=np.linspace(xleft,xright,10)
+    M=ComputeLocalMassMatrix(xleft,xright,pointsforintegration)
+    b=ComputeRHS(xleft,xright,pointsforintegration,f)
+    GlobalMatrix,Globalb=FillGlobalMatrixWithLocalMatrix(GlobalMatrix,M,Globalb,b)
+    
+
+## Solve
+u=np.linalg.solve(GlobalMatrix,Globalb)
+
+uanalytical=(8*pi)**2*np.sin(8*pi*x)
+xfine=np.linspace(0,1,N*100)  
+uanalyticalfine=(8*pi)**2*np.sin(8*pi*xfine)
+plt.figure()
+plt.plot(x,u, label='L2 projection')
+plt.plot(x,uanalytical,   label ='Interpolation')
+plt.plot(xfine,uanalyticalfine,'--', label= 'Analytical(exact/fine)')
+plt.xlabel('x')
+plt.ylabel('u(x)')
+plt.title('L2 vs Interpolation for N=10')
+plt.legend()
+plt.show()
+
+```
+
+#### 3. Local Mass Matrix
+
+```{python}
+
+N=10 # nof elements
+
+x=np.linspace(0,1,N+1)
+dx=1/N
+
+(i,iplus1)=elements[0]
+xleft=points[i]
+xright=points[i+1]
+pointsforintegration=np.linspace(xleft,xright,3)
+M1=ComputeLocalMassMatrix(xleft,xright,pointsforintegration)
+print(f"Local Mass Matrix(for dx=0.1, 3 points):\n{M1}")
+pointsforintegration=np.linspace(xleft,xright,2)
+M2=ComputeLocalMassMatrix(xleft,xright,pointsforintegration)
+print(f"Local Mass Matrix(for dx=0.1, 2 points):\n{M2}")
+```
+As we can see that atleast 3 points are needed (generally considered stable for 5 or more points) per subinterval for Simpson rule, for quadratic polynomial in local mass matrix's intergrand else it deviates.
+
+
+#### 4. Gradient of Hat-function
+
+Since hat functions are linear, the gradient of hat functions would be constant.
+
+```{python, echo=TRUE}
+def GradHatfunctions(dx, x):
+    dphileft = -np.ones_like(x) / dx
+    dphiright = np.ones_like(x) / dx
+    return dphileft, dphiright
+```
+
+#### 5. Local Stiffness Matrix
+
+```{python,  echo=TRUE}
+def ComputeLocalStiffnessMatrix(dx,pointsforintegration):
+    K=np.zeros((2,2))
+    dphileft,dphiright=GradHatfunctions(dx,pointsforintegration)
+    Kii=simpson(dphileft*dphileft, x=pointsforintegration)
+    Kiplus1i=simpson(dphiright*dphileft, x=pointsforintegration)
+    Kiiplus1=simpson(dphileft*dphiright, x=pointsforintegration)
+    Kiplus1iplus1=simpson(dphiright*dphiright, x=pointsforintegration)
+    K[0,0]=Kii
+    K[0,1]=Kiiplus1
+    K[1,0]=Kiplus1i
+    K[1,1]=Kiplus1iplus1
+    return K
+```
+
+#### 6. Local Stiffness Matrix by hand
+
+Since hat function is defined as: 
+
+\begin{equation}
+\phi_{left} = \frac{x_{right}-x}{dx}, \quad \phi_{right} = \frac{x - x_{left}}{dx}
+\end{equation}
+
+
+and its derivative would be :
+
+
+
+\begin{equation}
+\phi'_{left} = -\frac{1}{h}, \quad \phi'_{right} = \frac{1}{h}
+\end{equation}
+
+Thus the local stiffness matrix, will have the form:
+
+
+\begin{equation}
+K= \frac{1}{h}\begin{bmatrix}1 & -1 \\-1 & 1\end{bmatrix}
+\end{equation}
+
+```{python}
+K= ComputeLocalStiffnessMatrix(dx,pointsforintegration)
+print(f"and the Local Stiffness Matrix(Numerically):\n{K}" )
+```
+for dx(h) = 0.1 the numerical matrix is multiple of 10.
+
+#### 7. Global Stiffness Matrix
+If we do plt.spy(GlobalMatrixK), for N=100, the tridiagonal matrix:
+```{python}
+#| label: fig-matri
+#| fig-cap: "Spy plot of Global Stiffness Matrix for N-100"
+N=100 # nof elements
+
+x=np.linspace(0,1,N+1)
+dx=1/N
+
+elements=[]
+for e in range(0,N):
+    points=x
+    elements.append((e,e+1))
+
+GlobalMatrixM=np.zeros((N+1,N+1))
+GlobalMatrixK=np.zeros((N+1,N+1))
+Globalbm=np.zeros((N+1))
+Globalbk=np.zeros((N+1))
+
+for e in range(0,N):  #loop over element
+    (i,iplus1)=elements[e]
+    xleft=points[i]
+    xright=points[i+1]
+    #dx_e = xright - xleft
+
+    pointsforintegration=np.linspace(xleft,xright,10)
+
+    M=ComputeLocalMassMatrix(xleft,xright,pointsforintegration)
+    K= ComputeLocalStiffnessMatrix(dx,pointsforintegration)
+    bk=ComputeRHS(xleft,xright,pointsforintegration,f)
+    bm=ComputeRHS(xleft,xright,pointsforintegration,f)
+
+    GlobalMatrixM,Globalb=FillGlobalMatrixWithLocalMatrix(GlobalMatrixM,M,Globalbm,bm)
+    GlobalMatrixK,Globalb=FillGlobalMatrixWithLocalMatrix(GlobalMatrixK,K,Globalbk,bk)
+    
+
+### Solve
+GlobalMatrixM, Globalbm= SetDirichletConditions(GlobalMatrixM, Globalbm)
+GlobalMatrixK, Globalbk= SetDirichletConditions(GlobalMatrixK, Globalbk)
+um=np.linalg.solve(GlobalMatrixM,Globalbm)
+uk=np.linalg.solve(GlobalMatrixK,Globalbk)
+
+
+plt.spy(GlobalMatrixK)
+```
+
+#### 8. Solution to Poisson Equation
+
+```{python}
+#| label: fig-pois
+#| fig-cap: "Solution to Poisson Equation using FEM"
+plt.figure()
+plt.plot(x,200*uk, label='FEM Solution with L2 Projection(Scaled)')
+plt.plot(x,um,   label ='L2 peojection')
+plt.plot(xfine,uanalyticalfine,'--', label= 'Analytical(exact/fine)')
+plt.xlabel('x')
+plt.ylabel('u(x)')
+plt.title('Solution to Poisson equation with FEM for N=100')
+
+plt.legend()
+plt.show()
+
+
+```
+
+#### Final Code
+
+```{python, echo=TRUE, eval=FALSE}
+
+
+import matplotlib.pyplot as plt
+import numpy as np
+from math import pi
+
+# If you are using an older version of scipy use simps instead of simpson
+from scipy.integrate import simpson##
+
+def f(x):
+    return (8*pi)**2*np.sin(8*pi*x)
+
+
+def Hatfunctions(xleft,xright,dx,x):
+    phileft=(xright-x)/dx
+    phiright=(x-xleft)/dx
+    return phileft,phiright
+
+def GradHatfunctions(dx, x):
+    dphileft = -np.ones_like(x) / dx
+    dphiright = np.ones_like(x) / dx
+    return dphileft, dphiright
+
+def ComputeLocalMassMatrix(xleft,xright,pointsforintegration):
+    M=np.zeros((2,2))
+    phileft,phiright=Hatfunctions(xleft,xright,dx,pointsforintegration)
+    Mii=simpson(phileft*phileft, x=pointsforintegration)
+    Miplus1i=simpson(phiright*phileft, x=pointsforintegration)
+    Miiplus1=simpson(phileft*phiright, x=pointsforintegration)
+    Miplus1iplus1=simpson(phiright*phiright, x=pointsforintegration)
+    M[0,0]=Mii
+    M[0,1]=Miiplus1
+    M[1,0]=Miplus1i
+    M[1,1]=Miplus1iplus1
+    return M
+
+def ComputeLocalStiffnessMatrix(dx,pointsforintegration):
+    K=np.zeros((2,2))
+    dphileft,dphiright=GradHatfunctions(dx,pointsforintegration)
+    Kii=simpson(dphileft*dphileft, x=pointsforintegration)
+    Kiplus1i=simpson(dphiright*dphileft, x=pointsforintegration)
+    Kiiplus1=simpson(dphileft*dphiright, x=pointsforintegration)
+    Kiplus1iplus1=simpson(dphiright*dphiright, x=pointsforintegration)
+    K[0,0]=Kii
+    K[0,1]=Kiiplus1
+    K[1,0]=Kiplus1i
+    K[1,1]=Kiplus1iplus1
+    return K
+
+def SetDirichletConditions(GlobalM,Globalb):
+    GlobalM[0,:]=0
+    GlobalM[-1,:]=0
+    GlobalM[0,0]=1
+    GlobalM[-1,-1]=1
+    Globalb[0]=0
+    Globalb[-1]=0
+    return GlobalM,Globalb
+
+
+def ComputeRHS(xleft,xright,pointsforintegration,f):
+    b=np.zeros((2))
+    phileft,phiright=Hatfunctions(xleft,xright,dx,pointsforintegration)
+    bi=simpson(np.multiply(f(pointsforintegration),phileft), x=pointsforintegration)
+    biplus1=simpson(np.multiply(f(pointsforintegration),phiright), x=pointsforintegration)
+    b[0]=bi
+    b[1]=biplus1
+    return b
+
+def FillGlobalMatrixWithLocalMatrix(GlobalM,M,Globalb,b):
+    GlobalM[i,i]=GlobalM[i,i]+M[0,0]
+    GlobalM[i,iplus1]=GlobalM[i,iplus1]+M[0,1]
+    GlobalM[iplus1,i]=GlobalM[iplus1,i]+M[1,0]
+    GlobalM[iplus1,iplus1]=GlobalM[iplus1,iplus1]+M[1,1]
+  
+    Globalb[i]=Globalb[i]+b[0]
+    Globalb[iplus1]=Globalb[iplus1]+b[1]
+    return GlobalM,Globalb
+
+
+N=100 # nof elements
+
+x=np.linspace(0,1,N+1)
+dx=1/N
+
+elements=[]
+for e in range(0,N):
+    points=x
+    elements.append((e,e+1))
+
+
+GlobalMatrixM=np.zeros((N+1,N+1))
+GlobalMatrixK=np.zeros((N+1,N+1))
+Globalbm=np.zeros((N+1))
+Globalbk=np.zeros((N+1))
+
+#for M output
+#(i, iplus1)= elements[0]
+#xleft=points[i]
+#xright=points[i+1]
+#pointsforintegration=np.linspace(xleft,xright,10) ## Ouput for 2, 3 tried
+#M=ComputeLocalMassMatrix(xleft,xright,pointsforintegration)
+#print("Local Mass Matrix for element 0:")
+#print(M)
+
+for e in range(0,N):  #loop over element
+    (i,iplus1)=elements[e]
+    xleft=points[i]
+    xright=points[i+1]
+    #dx_e = xright - xleft
+
+    pointsforintegration=np.linspace(xleft,xright,10)
+
+    M=ComputeLocalMassMatrix(xleft,xright,pointsforintegration)
+    K= ComputeLocalStiffnessMatrix(dx,pointsforintegration)
+    bk=ComputeRHS(xleft,xright,pointsforintegration,f)
+    bm=ComputeRHS(xleft,xright,pointsforintegration,f)
+
+    GlobalMatrixM,Globalb=FillGlobalMatrixWithLocalMatrix(GlobalMatrixM,M,Globalbm,bm)
+    GlobalMatrixK,Globalb=FillGlobalMatrixWithLocalMatrix(GlobalMatrixK,K,Globalbk,bk)
+    
+
+### Solve
+GlobalMatrixM, Globalbm= SetDirichletConditions(GlobalMatrixM, Globalbm)
+GlobalMatrixK, Globalbk= SetDirichletConditions(GlobalMatrixK, Globalbk)
+um=np.linalg.solve(GlobalMatrixM,Globalbm)
+uk=np.linalg.solve(GlobalMatrixK,Globalbk)
+
+uanalytical=(8*pi)**2*np.sin(8*pi*x)
+xfine=np.linspace(0,1,N*100)  
+uanalyticalfine=(8*pi)**2*np.sin(8*pi*xfine)
+
+plt.plot(x,200*uk, label='FEM Solution with L2 Projection(Scaled)')
+plt.plot(x,um,   label ='L2 peojection')
+plt.plot(xfine,uanalyticalfine,'--', label= 'Analytical(exact/fine)')
+plt.xlabel('x')
+plt.ylabel('u(x)')
+plt.title('Solution to Poisson equation with FEM for N=10')
+
+plt.legend()
+plt.show()
+
+```
+
+
+# Exercise 10 
+
+#### 6 Comments and final script
+```{python, eval=FALSE, echo= TRUE}
+from mpi4py import MPI
+from dolfinx import mesh
+import numpy
+from dolfinx import fem
+import ufl
+from dolfinx import default_scalar_type
+from dolfinx.fem.petsc import LinearProblem
+import pyvista
+from dolfinx import plot
+
+# A unit mesh of 8*8 quadrilateral cells: Dicreticise the domain into finite elements
+domain = mesh.create_unit_square(MPI.COMM_WORLD, 8, 8, mesh.CellType.quadrilateral)
+
+# Finite element function space of Langrange polynomials of degree 1
+V = fem.functionspace(domain, ("Lagrange", 1))
+
+# Dirichlets BC iterpolated on boundary
+uD = fem.Function(V)
+uD.interpolate(lambda x: 1 + x[0] ** 2 + 2 * x[1] ** 2)
+
+# Mapping cells to facets
+tdim = domain.topology.dim
+fdim = tdim - 1
+domain.topology.create_connectivity(fdim, tdim)
+boundary_facets = mesh.exterior_facet_indices(domain.topology)
+
+# Mapping BC 
+boundary_dofs = fem.locate_dofs_topological(V, fdim, boundary_facets)
+bc = fem.dirichletbc(uD, boundary_dofs)
+
+# Defining Trial and Test fucntions 
+u = ufl.TrialFunction(V)
+v = ufl.TestFunction(V)
+
+# Constant source term over domain
+f = fem.Constant(domain, default_scalar_type(-6))
+
+# Writing the problem in variational: Bilinear and Linear
+a = ufl.dot(ufl.grad(u), ufl.grad(v)) * ufl.dx
+L = f * v * ufl.dx
+
+# Defining the problem: Assembly
+problem = LinearProblem(
+    a,
+    L,
+    bcs=[bc],
+    petsc_options={"ksp_type": "preonly", "pc_type": "lu"},
+    petsc_options_prefix="Poisson",
+)
+
+#Solving the problem
+uh = problem.solve()
+
+#Calculating the error:Interpolate exact solution in function space
+V2 = fem.functionspace(domain, ("Lagrange", 2))
+uex = fem.Function(V2, name="u_exact")
+uex.interpolate(lambda x: 1 + x[0] ** 2 + 2 * x[1] ** 2)
+
+#L2 norm error: 
+L2_error = fem.form(ufl.inner(uh - uex, uh - uex) * ufl.dx)
+error_local = fem.assemble_scalar(L2_error)
+error_L2 = numpy.sqrt(domain.comm.allreduce(error_local, op=MPI.SUM))
+
+#Maximum error at any DOF:
+error_max = numpy.max(numpy.abs(uD.x.array - uh.x.array))
+
+# Only print the error on one process
+if domain.comm.rank == 0:  
+    print(f"Error_L2 : {error_L2:.2e}")
+    print(f"Error_max : {error_max:.2e}")
+
+#Visualise: Mesh
+print(pyvista.global_theme.jupyter_backend)
+
+
+domain.topology.create_connectivity(tdim, tdim)
+topology, cell_types, geometry = plot.vtk_mesh(domain, tdim)
+grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
+
+plotter = pyvista.Plotter()
+plotter.add_mesh(grid, show_edges=True)
+plotter.view_xy()
+if not pyvista.OFF_SCREEN:
+    plotter.show()
+else:
+    figure = plotter.screenshot("fundamentals_mesh.png")
+    
+#Visualize: the solution, DOF in 2D
+u_topology, u_cell_types, u_geometry = plot.vtk_mesh(V)
+
+u_grid = pyvista.UnstructuredGrid(u_topology, u_cell_types, u_geometry)
+u_grid.point_data["u"] = uh.x.array.real
+u_grid.set_active_scalars("u")
+u_plotter = pyvista.Plotter()
+u_plotter.add_mesh(u_grid, show_edges=True)
+u_plotter.view_xy()
+if not pyvista.OFF_SCREEN:
+    u_plotter.show()
+#Visualise:  the solution in 3D, Warped
+warped = u_grid.warp_by_scalar()
+plotter2 = pyvista.Plotter()
+plotter2.add_mesh(warped, show_edges=True, show_scalar_bar=True)
+if not pyvista.OFF_SCREEN:
+    plotter2.show()
+```
+
+#### 7. Plots and Error, output of the script
+
+```{python}
+#| label: fig-mesh
+#| fig-cap: "Finite Element Mesh"
+
+```
+![ Finite Element Mesh](fundamentals_mesh.png)
+
+```{python}
+#| label: fig-2plot
+#| fig-cap: "Finite Element Mesh"
+
+```
+
+![2D solution PLot](solution.png)
+```{python}
+#| label: fig-3plot
+#| fig-cap: "Finite Element Mesh"
+
+```
+![Warped Solution Plot](warped_solution.png)
+
+
+
+#### 8. Problem : 
+
+
+\begin{equation}
+\begin{cases} 
+-\nabla^2 u = f & \text{in } \Omega \\
+BC: u = u_D & \text{on } \Gamma_{D}
+\end{cases}
+\end{equation}
+
+
+written in script as, with RHS and BC, 
+
+\begin{align}
+-\left( \frac{\partial^2 u}{\partial x^2} + \frac{\partial^2 u}{\partial y^2} \right) &= -6 && \text{in } \Omega = (0,1) \times (0,1) \\
+BC: u(x, y) &= 1 + x^2 + 2y^2 && \text{on } \partial\Omega
+\end{align}
+
+
+
+
+# Exercise 11
+
+#### 4. Difference in errors
+
+> Error with First Degree Lagrange Polynomial: 
+ Error_L2 : 8.24e-03, 
+ Error_max : 8.44e-15
+ 
+ > Error with Second degree Lagrange Polynomial: 
+ Error_L2 : 3.01e-15
+ Error_max : 8.44e-15
+ 
+ The error with L2 norm is very high with first degree Lagrange polynomial as we are repsenting 2nd order polynomial,
+ which gets better when we use second degree polynomial.
+ Whereas the max error is small, irrespective of the degree of Lagrange polynomial because, BC are 
+ interpolated exactly at the boundary.
+ 
+#### 5. Boundary Condition and RHS for sine source 
+ 
+> Since sine function would be zero at all boundaries, we just write, 
+ 
+uD.interpolate(lambda x:numpy.zeros_like(x[0])), homogeneous Dirichlet's BC.
+ 
+> and the source term(RHS) would be: 
+ 
+ as the Laplacian is applied on the solution we get the factor of $2\pi^2$
+ 
+ f = 2 * numpy.pi**2 * ufl.sin(numpy.pi * x[0]) * ufl.sin(numpy.pi * x[1])
+ 
+ 
+
+#### 6. In code, we replace, 
+
+>  uD.interpolate(lambda x:numpy.zeros_like(x[0]))
+ x = ufl.SpatialCoordinate(domain)
+ f = 2 * numpy.pi**2 * ufl.sin(numpy.pi * x[0]) * ufl.sin(numpy.pi * x[1])
+ 
+ and the exact solution in function space  
+ 
+ > uex.interpolate(lambda x: numpy.sin(numpy.pi*x[0]) * numpy.sin(numpy.pi*x[1]))
+
+#### 7. Error with sine as source 
+
+with this source term and BC- in 64*64 mesh,
+ > Error with 1st order Lagrange Polynomials: 
+ Error_L2 : 1.00e-04
+ Error_max : 1.00e+00
+ 
+ > Error with 2nd order Lagrange Polynomials:
+ Error_L2 : 1.19e-04
+ Error_max : 1.00e+00
+
+
+ The L2 norms errors are huge in comparison to quadratic exact solution but reasonanle for sine solution.
+ Max errors are in comparison to zero so, also reasonable for sine in range [0, 1]
+
+#### 8. Glacier Geometry
+
+we replace, 
+domain = mesh.create_unit_square(MPI.COMM_WORLD, 8, 8, mesh.CellType.quadrilateral), to 
+domain = loadmesh("arolla.xdmf") : with the help of function defined in helpfunctions.py.
+
+```{python}
+#| label: fig-4plot
+#| fig-cap: "Finite Element Mesh"
+
+```
+![Glacier Mesh](glacier_mesh.png)
+
+
+#### 9. The Homogeneous Neumann BC
+
+To implement homogeneous Neumann BC, we can remove Dirichlets BC, i.e. erase the line,  
+bc = fem.dirichletbc(uD, boundary_dofs) and remove BC from problem 
+problem = LinearProblem(
+    a,
+    L,
+    petsc_options={"ksp_type": "preonly", "pc_type": "lu"},
+    petsc_options_prefix="Poisson",
+)
+
+
+#### Final code for Exercise 11
+```{python , eval=FALSE, echo=TRUE}
+from mpi4py import MPI
+from dolfinx import mesh, io
+import numpy
+from dolfinx import fem
+import ufl
+from dolfinx import default_scalar_type
+from dolfinx.fem.petsc import LinearProblem
+import pyvista
+from dolfinx import plot
+
+def loadmesh(filename: str) -> mesh.Mesh:
+    """
+    Load a mesh from XDMF (dolfinx version).
+
+    Assumes the default grid name "mesh" in the XDMF file; adapt `name=...`
+    if needed.
+    """
+    with io.XDMFFile(MPI.COMM_WORLD, filename, "r") as xdmf:
+        msh = xdmf.read_mesh(name="Grid", xpath="/Xdmf/Domain")
+    msh.name = "mesh"
+
+    return msh
+    
+# A unit mesh of 8*8 quadrilateral cells: Dicreticise the domain into finite elements
+domain = loadmesh("arolla.xdmf")
+
+
+# Finite element function space of Langrange polynomials of degree 1
+V = fem.functionspace(domain, ("Lagrange", 1))
+
+# Dirichlets BC iterpolated on boundary
+#uD = fem.Function(V)
+#uD.interpolate(lambda x: 1 + x[0] ** 2 + 2 * x[1] ** 2)
+
+
+# Mapping cells to facets
+tdim = domain.topology.dim
+fdim = tdim - 1
+domain.topology.create_connectivity(fdim, tdim)
+boundary_facets = mesh.exterior_facet_indices(domain.topology)
+
+# Mapping BC 
+boundary_dofs = fem.locate_dofs_topological(V, fdim, boundary_facets)
+bc = fem.dirichletbc(uD, boundary_dofs)
+
+# Defining Trial and Test fucntions 
+u = ufl.TrialFunction(V)
+v = ufl.TestFunction(V)
+
+# Constant source term over domain
+f = fem.Constant(domain, default_scalar_type(-6))
+
+# Writing the problem in variational: Bilinear and Linear
+a = ufl.dot(ufl.grad(u), ufl.grad(v)) * ufl.dx
+L = f * v * ufl.dx
+
+# Defining the problem: Assembly
+problem = LinearProblem(
+    a,
+    L,
+    bcs=[bc],
+    petsc_options={"ksp_type": "preonly", "pc_type": "lu"},
+    petsc_options_prefix="Poisson",
+)
+
+#Solving the problem
+uh = problem.solve()
+
+#Calculating the error:Interpolate exact solution in function space
+V2 = fem.functionspace(domain, ("Lagrange", 2))
+uex = fem.Function(V2, name="u_exact")
+uex.interpolate(lambda x: 1 + x[0] ** 2 + 2 * x[1] ** 2)
+
+#L2 norm error: 
+L2_error = fem.form(ufl.inner(uh - uex, uh - uex) * ufl.dx)
+error_local = fem.assemble_scalar(L2_error)
+error_L2 = numpy.sqrt(domain.comm.allreduce(error_local, op=MPI.SUM))
+
+#Maximum error at any DOF:
+error_max = numpy.max(numpy.abs(uD.x.array - uh.x.array))
+
+# Only print the error on one process
+if domain.comm.rank == 0:  
+    print(f"Error_L2 : {error_L2:.2e}")
+    print(f"Error_max : {error_max:.2e}")
+
+
+#Visualise: Mesh
+print(pyvista.global_theme.jupyter_backend)
+
+domain.topology.create_connectivity(tdim, tdim)
+topology, cell_types, geometry = plot.vtk_mesh(domain, tdim)
+grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
+
+plotter = pyvista.Plotter()
+plotter.add_mesh(grid, show_edges=True)
+plotter.view_xy()
+if not pyvista.OFF_SCREEN:
+    plotter.show()
+else:
+    figure = plotter.screenshot("glacier_mesh.png")
+plotter.show()
+plotter.screenshot("glacier_mesh.png")
+
+
+#if not pyvista.OFF_SCREEN:
+#        plotter.show()
+#    else:
+#        figure = plotter.screenshot("fundamentals_mesh.png")
+        
+#Visualize: the solution, DOF in 2D
+u_topology, u_cell_types, u_geometry = plot.vtk_mesh(V)
+
+u_grid = pyvista.UnstructuredGrid(u_topology, u_cell_types, u_geometry)
+u_grid.point_data["u"] = uh.x.array.real
+u_grid.set_active_scalars("u")
+u_plotter = pyvista.Plotter()
+u_plotter.add_mesh(u_grid, show_edges=True)
+u_plotter.view_xy()
+if not pyvista.OFF_SCREEN:
+    u_plotter.show()
+#Visualise:  the solution in 3D, Warped
+warped = u_grid.warp_by_scalar()
+plotter2 = pyvista.Plotter()
+plotter2.add_mesh(warped, show_edges=True, show_scalar_bar=True)
+if not pyvista.OFF_SCREEN:
+    plotter2.show()
+
+
+
+```
+
+
+
+
+
+
+
+
+

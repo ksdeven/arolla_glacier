@@ -1,0 +1,307 @@
+---
+title: "Handin- 4"
+author: "Devendra Singh"
+format: 
+  pdf:
+    number-sections: false # if this is true you will get automatic numbering
+    fig-cap-location: bottom # where you want your figure captions
+    tbl-cap-location: top  # where you want your table captions
+    fig-numbering: true # When you use captions, this option will number them
+    tbl-numbering: true # Same for tables
+    toc: true # from now on you should always use table of contents to make sure that your structure is correct.
+    lof: true
+    #lot: true
+    include-in-header: #These options are to setup captions
+      text: | 
+        \usepackage{caption}
+        \captionsetup{
+        labelfont=bf,
+        width=0.9\linewidth
+        }
+   
+execute:
+  python: "/home/dsingh/miniconda3/envs/fenicsx-low/bin/python"
+  echo: false
+  warning: false
+  message: false
+---
+
+
+```{python}
+import os
+import ctypes
+
+
+
+# 1. Manually load the Conda environment's C++ library globally
+
+lib_path = "/home/dsingh/miniconda3/envs/fenicsx-low/lib/libstdc++.so.6"
+
+
+from mpi4py import MPI
+from dolfinx import mesh
+import numpy
+from dolfinx import fem
+import ufl
+from dolfinx import default_scalar_type
+from dolfinx.fem.petsc import LinearProblem
+import pyvista
+from dolfinx import plot
+```
+tube
+
+
+\pagebreak
+# Exercise 12
+
+
+### 3. Plots from Script 
+
+```{r fig.width=18, fig.height=21}
+#| label: fig-heat
+#| fig-cap: "Time evolution of Temperature on unit square solving heat equation with P1 Lagrange"
+# Set up a 7-row, 3-column grid
+par(mfrow = c(7, 3), mar = c(0.1, 0.1, 0.1, 0.1))
+
+img_files <- list.files("~/frames", pattern = "*.png", full.names = TRUE)
+labels <- letters[1:length(img_files)]
+for (i in 1:length(img_files)) {
+  img <- png::readPNG(img_files[i])
+  plot.new()
+  rasterImage(img, 0, 0, 1, 1)
+  # Add the letter label in the top-left corner of each sub-plot
+  # adj = 0 aligns it to the left, font = 2 makes it bold
+  mtext(paste0("(", labels[i], ")"), side = 3, line = 0.2, adj = 0, font = 2, cex = 1.1)
+  
+}
+```
+
+
+
+
+
+### 4. BC and RHS 
+> Boundary Condition: Cool boundary, Temperature fixed at zero at boundary.
+u_D.x.array[:] = 0.0  # boundary value is identically zero
+bc = fem.dirichletbc(u_D, dofs)
+> RHS: Altough the source term is zero(No external Heat Source), but while using FD for time, in the Variational form we can use previous solution as forcing term: u_n * v * ufl.dx
+
+### 5. Forward or backward
+
+We are currently backward Euler as we look at the variation form, we see that, spatial gradient uses the $dt * ufl.dot(ufl.grad(u), ufl.grad(v)) * ufl.d$, u: the trial function, represent the future term  instead of current term u_n/ $u^n$ .
+
+### 6. Change to Forward Euler
+
+To change to forward Euler, we need to evaluate the gradient term for current time step, u_n or $u^n$ 
+```{r, eval =FALSE, echo =TRUE }
+F_f = (
+    u * v * ufl.dx 
+    - u_n * v * ufl.dx 
+    + dt * ufl.dot(ufl.grad(u_n), ufl.grad(v)) * ufl.dx
+)
+```
+
+### 7. Time step Constraint
+
+Since no worries with Backward Euler and with the Forward Euler, we expect the time constraint to be $\Delta t \le \frac{h^2}{2\alpha}$, and with this calculation for 50 x 50 mesh, $\Delta t$ has to be smaller than 0.0002 for $\alpha$=1. 
+
+
+```{r}
+#| label: fig-mesh
+```
+![Visualization of 50x50 mesh](~/jupyter/NA/heat_mesh.png)
+
+
+\pagebreak
+
+# Exercise 13
+
+## 2. Solution to advection-diffusion equation
+
+```{r}
+#| label: fig-adv
+#| fig-cap: "The Solution to Advection-Diffusion equation, on 16x16 mesh for epsilon = 0.1, epsilon =0.01"
+par(mfrow = c(1, 4), mar = c(0.1, 0.1, 0.1, 0.1))
+
+
+img_files <- list.files("~/advec", pattern = "*.png", full.names = TRUE)
+labels <- letters[1:length(img_files)]
+for (i in 1:length(img_files)) {
+  img <- png::readPNG(img_files[i])
+  plot.new()
+  rasterImage(img, 0, 0, 1, 1)
+  # Add the letter label in the top-left corner of each sub-plot
+  # adj = 0 aligns it to the left, font = 2 makes it bold
+  mtext(paste0("(", labels[i], ")"), side = 3, line = 0.2, adj = 0, font = 2, cex = 1.1)
+  
+}
+```
+
+
+ 
+The Solution to Advection-Diffusion equation, with a colorbar on 16x16 mesh, is visualized in @fig-adv, with different $epsilon$ values 0.1 and 0.01. 
+> We can clearly observe that boundary is on the right, which is forced to sharply fall to zero by BC where general solution would have been increasing.
+> For $\epsilon=0.001$, we can see that solution is not smooth.
+
+
+
+
+
+
+```{r}
+#| label: fig-adv1
+#| fig-cap: "The Solution to Advection-Diffusion equation, on 16x16 mesh for epsilon = 0.001,  showcasing the effect of adding Artificial Diffusion"
+par(mfrow = c(1, 4), mar = c(0.1, 0.1, 0.1, 0.1))
+
+
+img_files <- list.files("~/advec/adv", pattern = "*.png", full.names = TRUE)
+labels <- letters[1:length(img_files)]
+for (i in 1:length(img_files)) {
+  img <- png::readPNG(img_files[i])
+  plot.new()
+  rasterImage(img, 0, 0, 1, 1)
+  # Add the letter label in the top-left corner of each sub-plot
+  # adj = 0 aligns it to the left, font = 2 makes it bold
+  mtext(paste0("(", labels[i], ")"), side = 3, line = 0.2, adj = 0, font = 2, cex = 1.1)
+  
+}
+```
+
+
+### 3. Artificial Diffusion
+In second row for $\epsilon = 0.001$ of @fig-adv1, we can clearly observe sharp peaks for (e) & (f), which are later smoothed by addition of Artificial Diffusion. So, Yes the solution improves. 
+
+
+
+
+
+### 4. Final Script 
+
+```{python, eval=FALSE, echo= TRUE}
+from mpi4py import MPI
+from dolfinx import mesh
+import numpy as np
+from dolfinx import fem
+import ufl
+from dolfinx import default_scalar_type
+from dolfinx.fem.petsc import LinearProblem
+import pyvista
+from dolfinx import plot
+
+# A unit mesh of 16*16 quadrilateral cells: Dicreticise the domain into finite elements
+N=16
+domain = mesh.create_unit_square(MPI.COMM_WORLD, N, N, mesh.CellType.quadrilateral)
+
+# Finite element function space of Langrange polynomials of degree 1
+V = fem.functionspace(domain, ("Lagrange", 1))
+
+# Dirichlets BC iterpolated on boundary: Homogeneous
+uD = fem.Function(V)
+uD.interpolate(lambda x: np.zeros_like(x[0]))
+
+# Mapping cells to facets
+tdim = domain.topology.dim
+fdim = tdim - 1
+domain.topology.create_connectivity(fdim, tdim)
+boundary_facets = mesh.exterior_facet_indices(domain.topology)
+
+# Mapping BC 
+boundary_dofs = fem.locate_dofs_topological(V, fdim, boundary_facets)
+bc = fem.dirichletbc(uD, boundary_dofs)
+
+# Defining Trial and Test fucntions 
+u = ufl.TrialFunction(V)
+v = ufl.TestFunction(V)
+
+# Parameters with Constant source term over domain
+epsilon=0.001
+b=fem.Constant(domain, np.array([1.0, 0.0], dtype=default_scalar_type))
+f = fem.Constant(domain, default_scalar_type(1.0))
+
+#Artificial Diffusion
+h = ufl.CellDiameter(domain)
+bmag = ufl.sqrt(ufl.dot(b, b))
+delta = 0.5 * h / bmag
+a_ad = delta * ufl.dot(b, ufl.grad(u)) * ufl.dot(b, ufl.grad(v)) * ufl.dx
+L_ad = delta * f * ufl.dot(b, ufl.grad(v)) * ufl.dx
+
+
+
+# Writing the problem in variational: Bilinear and Linear
+a = epsilon* ufl.dot(ufl.grad(u), ufl.grad(v)) * ufl.dx+ufl.dot(b, ufl.grad(u)) * v * ufl.dx
+L = f * v * ufl.dx  
+
+
+# Defining the problem: Assembly
+problem = LinearProblem(
+    a+a_ad,
+    L+L_ad,
+    bcs=[bc],
+    petsc_options={"ksp_type": "preonly", "pc_type": "lu"},
+    petsc_options_prefix="Poisson",
+)
+
+#Solving the problem
+uh = problem.solve()
+
+#Calculating the error:Interpolate exact solutio in function space
+V2 = fem.functionspace(domain, ("Lagrange", 2))
+uex = fem.Function(V2, name="u_exact")
+uex.interpolate(lambda x: np.zeros_like(x[0]))
+
+#L2 norm error: 
+L2_error = fem.form(ufl.inner(uh - uex, uh - uex) * ufl.dx)
+error_local = fem.assemble_scalar(L2_error)
+error_L2 = numpy.sqrt(domain.comm.allreduce(error_local, op=MPI.SUM))
+
+#Maximum error at any DOF:
+error_max = numpy.max(numpy.abs(uD.x.array - uh.x.array))
+
+# Only print the error on one process
+if domain.comm.rank == 0:  
+    print(f"Error_L2 : {error_L2:.2e}")
+    print(f"Error_max : {error_max:.2e}")
+
+#Visualise: Mesh
+print(pyvista.global_theme.jupyter_backend)
+
+
+domain.topology.create_connectivity(tdim, tdim)
+topology, cell_types, geometry = plot.vtk_mesh(domain, tdim)
+grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
+
+plotter = pyvista.Plotter()
+plotter.add_mesh(grid, show_edges=True)
+plotter.view_xy()
+if not pyvista.OFF_SCREEN:
+    plotter.show()
+else:
+    figure = plotter.screenshot("fundamentals_mesha.png")
+
+plotter.screenshot("fundamentals_mesha.png")
+plotter.close()
+
+#Visualize: the solution, DOF in 2D
+u_topology, u_cell_types, u_geometry = plot.vtk_mesh(V)
+
+u_grid = pyvista.UnstructuredGrid(u_topology, u_cell_types, u_geometry)
+u_grid.point_data["u"] = uh.x.array.real
+u_grid.set_active_scalars("u")
+u_plotter = pyvista.Plotter()
+u_plotter.add_mesh(u_grid, show_edges=True, show_scalar_bar=True, scalar_bar_args={ 'vertical': True})
+u_plotter.view_xy()
+if not pyvista.OFF_SCREEN:
+    u_plotter.show()
+
+u_plotter.screenshot("solutiona.png")
+u_plotter.close()
+#Visualise:  the solution in 3D, Warped
+warped = u_grid.warp_by_scalar()
+plotter2 = pyvista.Plotter()
+plotter2.add_mesh(warped, show_edges=True, show_scalar_bar=True, scalar_bar_args={ 'vertical': True})
+if not pyvista.OFF_SCREEN:
+    plotter2.show()
+
+plotter2.screenshot("warped_solutiona.png")
+```
+

@@ -1,0 +1,145 @@
+---
+title: "Project"
+author: "Devendra Singh"
+format: 
+  pdf:
+    number-sections: false # if this is true you will get automatic numbering
+    fig-cap-location: bottom # where you want your figure captions
+    tbl-cap-location: top  # where you want your table captions
+    fig-numbering: true # When you use captions, this option will number them
+    tbl-numbering: true # Same for tables
+    toc: true # from now on you should always use table of contents to make sure that your structure is correct.
+    lof: true
+    #lot: true
+    include-in-header: #These options are to setup captions
+      text: | 
+        \usepackage{caption}
+        \captionsetup{
+        labelfont=bf,
+        width=0.9\linewidth
+        }
+jupyter: fenicsx-low
+execute:
+  python: "/home/dsingh/miniconda3/envs/fenicsx-low/bin/python"
+  echo: false
+  warning: false
+  message: false
+---
+
+```{python}
+
+
+import os
+import sys
+
+# 1. Check if we are in the right environment
+#print(f"Python Path: {sys.executable}")
+
+# 2. Check if the LD_PRELOAD fix is active
+ld_preload = os.environ.get('LD_PRELOAD', 'NOT FOUND')
+#print(f"LD_PRELOAD: {ld_preload}")
+
+# 3. Test FEniCSx and PETSc imports
+try:
+    from dolfinx import mesh
+    from mpi4py import MPI
+    import numpy
+    from dolfinx import fem
+    import ufl
+    from dolfinx import default_scalar_type
+    from dolfinx.fem.petsc import LinearProblem
+    import pyvista
+    from dolfinx import plot
+    #print("✅ imported successfully!")
+except Exception as e:
+    print(f"❌ Import failed: {e}")
+
+
+import ctypes
+# 4. Manually load the Conda environment's C++ library globally
+lib_path = "/home/dsingh/miniconda3/envs/fenicsx-low/lib/libstdc++.so.6"
+
+```
+
+With the FEM method we are going to solve the equation,
+
+$$
+2\partial_x(\eta\partial_x v_x)+\frac{1}{2}\partial_z(\eta\partial_z v_x)=\rho g\partial_x h
+$$ {#eq-main}
+
+
+
+$$
+\partial_x v_z = - \partial_x v_x
+$${#eq-2}
+
+
+$$
+\partial_t h + v_x|_{z=s} \partial_x h = v_z
+$${#eq-3}
+
+
+
+### 1. Order of equation :
+
+The @eq-main, is **second order** for horizontal velocity.
+
+### 2. Type of equation :
+
+For constant viscosity, the @eq-main can be written as,
+
+$$
+\eta(2\partial_{xx} +\frac{1}{2}\partial_{zz} ) v_x =  \rho g\partial_x h
+$${#eq-4}
+
+When we compare this with the discriminat, will be negative as B is zero, suggesting that its an **elliptic** PDE of second order. 
+
+### 3. FEM formulism : 
+
+To solve @eq-main using FEM, we first need to convert this PDE into weak(Variational) form. For that, we define a function space $V_h$ over our mesh $\Omega$. In this function space we find $u_x \in V_h$ such that $u_x=0$ on the bed(Homogeneous Dirichlet BC). 
+
+$$
+V_h = \{ v \in H^1(\Omega) : v|_{\Gamma_{bed}} = 0 \}
+$${#eq-5}
+
+
+The weak form to find $u \in V_h$ for all $v \in V_h$ has , 
+
+> the bilinear form 
+
+
+$$
+a(u, v) = \int_{\Omega} \left( 2\eta \partial_x u \partial_x v + \eta \partial_z u \partial_z v \right) \, d\Omega
+$${#eq-6}
+
+
+
+> and the linear form,
+
+
+
+$$
+L(v) = -\int_{\Omega} \rho g \partial_x h v \, d\Omega 
+$${#eq-7}
+
+
+The boundary condition:
+
+
+> At the bed surface($\Gamma_{bed}$): $u_x=0$
+
+> At the ice/atmosphere interface($\Gamma_{surface}$):
+
+
+
+$$
+\eta(2\partial_{x} v_x \partial_{x} h -\frac{1}{2}\partial_{z}  v_x) =  0
+$${#eq-8}
+
+
+
+```{python}
+#+ \int_{\partial\Omega} \text{surface term} \, d\Gamma
+
+
+```
