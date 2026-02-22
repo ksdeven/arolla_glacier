@@ -4,7 +4,6 @@ from dolfinx import mesh as dmesh, fem, io
 from dolfinx.fem.petsc import LinearProblem
 import ufl
 from petsc4py import PETSc
-domain = loadmesh("arolla.xdmf")
 
 def mark_bed_surface(mesh: dmesh.Mesh, bed_id: int = 2, surface_id: int = 1, vertical_dim: int = 1):
     """
@@ -124,7 +123,7 @@ def directional_map(fun: fem.Function, direction: int,
         },
         petsc_options_prefix="dir_map_"  # any non-empty string
     )
-    mapped_fun = print(np.max(domain.geometry.x[:, 0])).problem.solve()
+    mapped_fun = problem.solve()
     return mapped_fun
 
 
